@@ -6,7 +6,11 @@ import Usuario from '../../model/Usuario';
 
 interface AuthContextProps {
     usuario?: Usuario
+    carregando?: boolean
+    cadastrar?: (email: string, senha: string) => Promise<void>
+    login?: (email: string, senha: string) => Promise<void>
     loginGoogle?: () => Promise<void>
+    logout?: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextProps>({})
@@ -25,11 +29,11 @@ async function usuarioNormalizado(usuarioFirebase: firebase.User): Promise<Usuar
 
 function gerenciarCookie(logado: boolean) {
     if (logado) {
-        Cookies.set('admin-templete-cod3r-auth', logado, {
+        Cookies.set('admin-template-cod3r-auth', "logado", {
             expires: 7
         })
     } else {
-        Cookies.remove('admin-templete-cod3r-auth')
+        Cookies.remove('admin-template-cod3r-auth')
     }
 }
 
@@ -37,7 +41,7 @@ export function AuthProvider(props) {
     const [carregando, setCarregando] = useState(true)
     const [usuario, setUsuario] = useState<Usuario>(null)
 
-    async function configurarSesao(usuarioFirebase) {
+    async function configurarSessao(usuarioFirebase) {
         if (usuarioFirebase?.email) {
             const usuario = await usuarioNormalizado(usuarioFirebase)
             setUsuario(usuario)
@@ -53,24 +57,45 @@ export function AuthProvider(props) {
     }
 
     async function loginGoogle() {
-        const resp = await firebase.auth().signInWithPopup(
-            new firebase.auth.GoogleAuthProvider()
-        )
+        try {
+            setCarregando(true)
+            const resp = await firebase.auth().signInWithPopup(
+                new firebase.auth.GoogleAuthProvider()
+            )
 
-        configurarSesao(resp.user)
-        route.push('/')
+            await configurarSessao(resp.user)
+            route.push('/')
+        } finally {
+            setCarregando(false)
+        }
 
     }
 
+    async function logout() {
+        try {
+            setCarregando(true)
+            await firebase.auth().signOut()
+            await configurarSessao(null)
+        } finally {
+            setCarregando(false)
+        }
+    }
+
     useEffect(() => {
-        const cancelar = firebase.auth().onIdTokenChanged(configurarSesao)
-        return () => cancelar()
+        if (Cookies.get('admin-template-cod3r-auth')) {
+            const cancelar = firebase.auth().onIdTokenChanged(configurarSessao)
+            return () => cancelar()
+        } else {
+            setCarregando(false)
+        }
     }, [])
 
     return (
         <AuthContext.Provider value={{
             usuario,
-            loginGoogle
+            carregando,
+            loginGoogle,
+            logout
         }}>
             {props.children}
         </AuthContext.Provider>
